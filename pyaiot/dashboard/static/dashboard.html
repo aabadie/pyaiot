@@ -431,7 +431,7 @@ function receive_message(msg) {
             break
         case 'update':
             if (index != -1) {
-                //let endpoint = msg.endpoint.replace(/^\//g, '') // remove leading slash
+                let endpoint = msg.endpoint.replace(/^\//g, '') // remove leading slash
 
                 var data = msg.data
                 if (endpoint == 'position') {
