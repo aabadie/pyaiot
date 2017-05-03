@@ -669,14 +669,14 @@ function update_imu_charts(msg) {
     // xAcc = Math.atan2(acc[1], acc[2]) * 180 / Math.PI
     // yAcc = Math.atan2(acc[0], acc[2]) * 180 / Math.PI
     // zAcc = Math.atan2(acc[0], acc[1]) * 180 / Math.PI
-    // angle[0] = 0.98 * angle[0] + 0.02 * xAcc * 75 / 90
-    // angle[1] = 0.98 * angle[1] + 0.02 * yAcc * 75 / 90
-    // angle[2] = 0.98 * angle[2] + 0.02 * zAcc * 75 / 90
+    angle[0] = 0.98 * angle[0] + 0.02 * xAcc * 75 / 90
+    angle[1] = 0.98 * angle[1] + 0.02 * yAcc * 75 / 90
+    angle[2] = 0.98 * angle[2] + 0.02 * zAcc * 75 / 90
 
     lastTime = currentTime
     teapot.setAngle(angle.map(a => a * Math.PI / 150))
-    console.info(angle)
-    console.info(acc, xAcc, yAcc, zAcc)
+    console.info("############ ANGLE:", angle)
+    // console.info(acc, xAcc, yAcc, zAcc)
 }
 
 function remove_charts(node) {
