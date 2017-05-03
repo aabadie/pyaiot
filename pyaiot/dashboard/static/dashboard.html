@@ -462,6 +462,7 @@ function receive_message(msg) {
 }
 
 function update_charts(msg) {
+    console.log("############# UPDATE CHARTS")
     // imu charts management
     if (msg.endpoint === "/imu") {
         if (!(msg.node in acc_charts)) {
@@ -472,6 +473,7 @@ function update_charts(msg) {
             setup_teapot_charts(msg.node)
         }
 
+        console.log("############# UPDATE IMU CHARTS")
         update_imu_charts(msg)
     }
 
