@@ -462,7 +462,7 @@ function receive_message(msg) {
 }
 
 function update_charts(msg) {
-    console.log("############# UPDATE CHARTS")
+    console.log("############# UPDATE CHARTS", msg.endpoint)
     // imu charts management
     if (msg.endpoint === "/imu") {
         if (!(msg.node in acc_charts)) {
