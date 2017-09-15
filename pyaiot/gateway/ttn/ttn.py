@@ -31,9 +31,11 @@
 
 import time
 import uuid
+import datetime
 import json
 import asyncio
 import logging
+import base64
 
 from tornado import gen
 from tornado.options import options
@@ -86,13 +88,11 @@ class TTNController():
     @asyncio.coroutine
     def start(self):
         """Connect to MQTT broker and subscribe to node check ressource."""
-        yield from self.mqtt_client.connect('mqtt://{}@{}:{}:{}'
-                                            .format(options.app_id,
-                                                    options.app_key,
-                                                    MQTT_HOST,
-                                                    MQTT_PORT))
-        # Subscribe to 'gateway/check' with QOS=1
-        yield from self.mqtt_client.subscribe([('node/check', QOS_1)])
+        mqtt_url = 'mqtt://{}:{}@{}:{}'.format(options.app_id, options.app_key,
+                                               MQTT_HOST, MQTT_PORT)
+
+        yield from self.mqtt_client.connect(mqtt_url)
+        yield from self.mqtt_client.subscribe([('+/devices/+/up', QOS_1)])
         while True:
             try:
                 logger.debug("Waiting for MQTT messages published by TTN "
@@ -106,22 +106,15 @@ class TTNController():
                 logger.error("General exception: {}".format(exc))
                 break
             packet = message.publish_packet
-            topic_name = packet.variable_header.topic_name
+
             try:
-                data = json.loads(packet.payload.data.nodesdecode('utf-8'))
+                data = json.loads(packet.payload.data.decode())
             except:
                 # Skip data if not valid
                 continue
-            logger.debug("Received message from TTN backend: {} => {}"
-                         .format(topic_name, data))
-            if topic_name.endswith("/check"):
-                asyncio.get_event_loop().create_task(
-                    self.handle_node_check(data))
-            elif topic_name.endswith("/resources"):
-                asyncio.get_event_loop().create_task(
-                    self.handle_node_resources(topic_name, data))
-            else:
-                self.handle_node_update(topic_name, data)
+            logger.debug("Received message from TTN backend => {}"
+                         .format(data))
+            self.handle_node_update(data)
 
     def close(self):
         loop = asyncio.get_event_loop()
@@ -132,67 +125,6 @@ class TTNController():
         for node in self.nodes:
             yield from self._disconnect_from_node(node)
         yield from self.mqtt_client.disconnect()
-
-    @asyncio.coroutine
-    def handle_node_check(self, data):
-        """Handle alive message received from coap node."""
-        node_id = data['id']
-        node = MQTTNode(node_id)
-        node.check_time = time.time()
-        if node not in self.nodes:
-            resources_topic = 'node/{}/resources'.format(node_id)
-            yield from self.mqtt_client.subscribe([(resources_topic, QOS_1)])
-            logger.debug("Subscribed to topic: {}".format(resources_topic))
-            node_uid = str(uuid.uuid4())
-            self.nodes.update({node: {'uid': node_uid,
-                                      'data': {'protocol': PROTOCOL}}})
-            logger.debug("Available nodes: {}".format(self.nodes))
-            self._on_message_cb(Msg.new_node(node_uid))
-            self._on_message_cb(Msg.update_node(node_uid, "protocol", PROTOCOL))
-            discover_topic = 'gateway/{}/discover'.format(node_id)
-            yield from self.mqtt_client.publish(discover_topic, b"resources",
-                                                qos=QOS_1)
-            logger.debug("Published '{}' to topic: {}".format("resources",
-                         discover_topic))
-        else:
-            data = self.nodes.pop(node)
-            self.nodes.update({node: data})
-        logger.debug("Available nodes: {}".format(self.nodes))
-
-    @asyncio.coroutine
-    def handle_node_resources(self, topic, data):
-        """Process resources published by a node."""
-        node_id = topic.split("/")[1]
-        node = None
-        for n in self.nodes.keys():
-            if n.node_id == node_id:
-                node = n
-                break
-        if node is None:
-            return
-        node.resources = data
-        yield from self.mqtt_client.subscribe(
-            [('node/{}/{}'.format(node_id, resource), QOS_1)
-             for resource in data])
-        yield from self.mqtt_client.publish('gateway/{}/discover'
-                                            .format(node_id), b"values",
-                                            qos=QOS_1)
-
-    def handle_node_update(self, topic_name, data):
-        """Handle CoAP post message sent from coap node."""
-        _, node_id, resource = topic_name.split("/")
-        node = MQTTNode(node_id)
-        value = data['value']
-        if node in self.nodes:
-            if resource in self.nodes[node]['data']:
-                # Add updated information to cache
-                self.nodes[node]['data'][resource] = value
-            else:
-                self.nodes[node]['data'].update({resource: value})
-
-        # Send update to broker
-        self._on_message_cb(Msg.update_node(
-            self.nodes[node]['uid'], resource, value))
 
     @gen.coroutine
     def fetch_nodes_cache(self, source):
@@ -206,52 +138,63 @@ class TTNController():
                     Msg.update_node(value['uid'], resource, data,
                                     dst=source))
 
-    def send_data_to_node(self, data):
-        """Forward received message data to the destination node.
+    def handle_node_update(self, data):
+        """Handle CoAP post message sent from coap node."""
+        payload = base64.b64decode(data['payload_raw']).decode()
+        node_id = data['dev_id']
+        app_id = data['app_id']
+        last_update = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        logger.debug("node id: {}\npayload: {}\nlast update: {}"
+                     .format(node_id, payload, last_update))
 
-        The message should be JSON and contain 'uid', 'path' and 'payload'
-        keys.
+        node = TTNNode(node_id)
+        if node not in self.nodes:
+            node_uid = str(uuid.uuid4())
+            self.nodes.update({
+                node: {
+                    'uid': node_uid,
+                    'data': {
+                        'protocol': PROTOCOL,
+                        'dev_id': node_id,
+                        'app_id': app_id,
+                        'last_update': last_update
+                    }
+                }
+            })
+            logger.debug("Available nodes: {}".format(self.nodes))
+            self._on_message_cb(Msg.new_node(node_uid))
+            self._on_message_cb(Msg.update_node(node_uid, "protocol",
+                                                PROTOCOL))
+            self._on_message_cb(Msg.update_node(node_uid, "dev_id",
+                self.nodes[node]['data']['dev_id']))
+            self._on_message_cb(Msg.update_node(node_uid, "app_id",
+                self.nodes[node]['data']['app_id']))
+            self._on_message_cb(Msg.update_node(node_uid, "last_update",
+                self.nodes[node]['data']['last_update']))
 
-        - 'uid' corresponds to the node uid (uuid)
-        - 'path' corresponds to the MQTT resource the node has subscribed to.
-        - 'payload' corresponds to the new payload for the MQTT resource.
-        """
-        uid = data['uid']
-        endpoint = data['endpoint']
-        payload = data['payload']
-        logger.debug("Translating message ('{}') received to MQTT publish "
-                     "request".format(data))
+        # Send update to broker
+        self._on_message_cb(Msg.update_node(
+            self.nodes[node]['uid'], 'dev_id', node_id))
 
-        for node, value in self.nodes.items():
-            if self.nodes[node]['uid'] == uid:
-                node_id = node.node_id
-                logger.debug("Updating MQTT node '{}' resource '{}'"
-                             .format(node_id, endpoint))
-                asyncio.get_event_loop().create_task(self.mqtt_client.publish(
-                    'gateway/{}/{}/set'.format(node_id, endpoint),
-                    payload.encode(), qos=QOS_1))
-                break
+        self._on_message_cb(Msg.update_node(
+            self.nodes[node]['uid'], 'app_id', app_id))
 
-    def request_alive(self):
-        """Publish a request to trigger a check publish from nodes."""
-        logger.debug("Request check message from all MQTT nodes")
-        asyncio.get_event_loop().create_task(
-            self.mqtt_client.publish('gateway/check', b'', qos=QOS_1))
-
-    def check_dead_nodes(self):
-        """Check and remove nodes that are not alive anymore."""
-        to_remove = [node for node in self.nodes.keys()
-                     if int(time.time()) > node.check_time + self.max_time]
-        for node in to_remove:
-            asyncio.get_event_loop().create_task(
-                self._disconnect_from_node(node))
-            for resource in node.resources:
-                pass
-            uid = self.nodes[node]['uid']
-            self.nodes.pop(node)
-            logger.info("Removing inactive node {}".format(uid))
-            logger.debug("Available nodes {}".format(self.nodes))
-            self._on_message_cb(Msg.out_node(uid))
+        self._on_message_cb(Msg.update_node(
+            self.nodes[node]['uid'], 'last_update', last_update))
+        
+        try:
+            resource_data = json.loads(payload)
+            resource = resource_data['r']
+            value = resource_data['v']
+            if resource in self.nodes[node]['data']:
+                # Add updated information to cache
+                self.nodes[node]['data'][resource] = value
+            else:
+                self.nodes[node]['data'].update({resource: value})
+            self._on_message_cb(Msg.update_node(
+                self.nodes[node]['uid'], resource, value))
+        except:
+            logger.debug("Invalid resource payload: {}".format(payload))
 
     @asyncio.coroutine
     def _disconnect_from_node(self, node):

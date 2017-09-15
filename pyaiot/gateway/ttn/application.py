@@ -57,8 +57,6 @@ class TTNGatewayApplication(web.Application):
 
         # Starts TTN controller
         self._ttn_controller = TTNController(on_message_cb=self.send_to_broker)
-        PeriodicCallback(self._ttn_controller.check_dead_nodes, 1000).start()
-        PeriodicCallback(self._ttn_controller.request_alive, 30000).start()
 
         # Create connection to broker
         self.create_broker_connection(
@@ -84,7 +82,7 @@ class TTNGatewayApplication(web.Application):
                 logger.info("Connected to broker, sending auth token")
                 self.broker.write_message(auth_token(self.keys))
                 yield gen.sleep(1)
-                self._mqtt_controller.fetch_nodes_cache('all')
+                self._ttn_controller.fetch_nodes_cache('all')
                 while True:
                     message = yield self.broker.read_message()
                     if message is None:
@@ -109,10 +107,7 @@ class TTNGatewayApplication(web.Application):
         if message['type'] == "new":
             # Received when a new client connects => fetching the nodes
             # in controller's cache
-            self._mqtt_controller.fetch_nodes_cache(message['src'])
-        elif message['type'] == "update":
-            # Received when a client update a node
-            self._mqtt_controller.send_data_to_node(message['data'])
+            self._ttn_controller.fetch_nodes_cache(message['src'])
 
     def terminate(self):
         self._ttn_controller.close()

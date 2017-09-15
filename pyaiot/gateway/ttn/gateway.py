@@ -52,9 +52,9 @@ def parse_command_line():
     if not hasattr(options, "broker_port"):
         define("broker_port", default=8000, help="Pyaiot broker port")
     if not hasattr(options, "app-id"):
-        define("mqtt-host", default='', help="TTN application ID")
+        define("app-id", default='', help="TTN application ID")
     if not hasattr(options, "app-key"):
-        define("mqtt-port", default='', help="TTN application key")
+        define("app-key", default='', help="TTN application key")
     if not hasattr(options, "key-file"):
         define("key-file", default=DEFAULT_KEY_FILENAME,
                help="Secret and private keys filename.")
@@ -83,7 +83,7 @@ def run(arguments=[]):
     if not tornado.platform.asyncio.AsyncIOMainLoop().initialized():
         tornado.platform.asyncio.AsyncIOMainLoop().install()
 
-    start_application(MQTTGatewayApplication(keys, options=options),
+    start_application(TTNGatewayApplication(keys, options=options),
                       close_client=True)
 
 
