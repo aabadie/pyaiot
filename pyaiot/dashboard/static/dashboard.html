@@ -219,6 +219,18 @@ var joystick = initJoystick()
                                         <th>Procotol</th>
                                         <td>{{! node.data.protocol }}</td>
                                     </tr>
+                                    <tr v-if="node.data.last_update">
+                                        <th>Last update</th>
+                                        <td>{{! node.data.last_update }}</td>
+                                    </tr>
+                                    <tr v-if="node.data.dev_eui">
+                                        <th>Device EUI</th>
+                                        <td>{{! node.data.dev_eui }}</td>
+                                    </tr>
+                                    <tr v-if="node.data.app_eui">
+                                        <th>Application EUI</th>
+                                        <td>{{! node.data.dev_eui }}</td>
+                                    </tr>
                                 </table>
                             </div>
                         </div>
