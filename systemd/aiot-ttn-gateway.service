@@ -1,0 +1,20 @@
+[Unit]
+Description=Pyaiot TTN gateway service
+After=network.target radvd.service
+
+[Service]
+User=pi
+Environment='BROKER_HOST=localhost' \
+            'BROKER_PORT=8082' \
+            'APP_KEY=app' \
+            'APP_ID=id'
+
+ExecStart=/usr/local/bin/aiot-ttn-gateway \
+            --broker-host=${BROKER_HOST}  \
+            --broker-port=${BROKER_PORT}  \
+            --app-key=${APP_KEY}          \
+            --app-id=${APP_ID}
+
+[Install]
+WantedBy=multi-user.target
+Alias=aiot-ttn-gateway.service
