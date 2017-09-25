@@ -52,6 +52,14 @@ MQTT_HOST = 'eu.thethings.network'
 MQTT_PORT = 1883
 PROTOCOL = "LoRa TTN"
 
+MQTT_CLIENT_CONFIG = {
+    'keep_alive': 20,
+    'ping_delay': 10,
+    'auto_reconnect': True,
+    'reconnect_max_interval': 20,
+    'reconnect_retries': 10,
+}
+
 
 class TTNNode(object):
     """Object defining a TTN node."""
@@ -82,7 +90,7 @@ class TTNController():
         # on_message_cb = send_to_broker method in gateway application
         self._on_message_cb = on_message_cb
         self.nodes = {}
-        self.mqtt_client = MQTTClient()
+        self.mqtt_client = MQTTClient(config=MQTT_CLIENT_CONFIG)
         asyncio.get_event_loop().create_task(self.start())
 
     @asyncio.coroutine
