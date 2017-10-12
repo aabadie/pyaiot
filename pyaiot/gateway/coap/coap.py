@@ -192,7 +192,7 @@ class CoapController():
             coap_node_port = COAPS_PORT
             coap_protocol = "coaps"
 
-        coap_node_url = '{}://[{}:{}]'.format(
+        coap_node_url = '{}://[{}]:{}'.format(
             coap_protocol, node.address, coap_node_port)
 
         if len(node.endpoints) == 0:
