@@ -186,7 +186,15 @@ class CoapController():
     @gen.coroutine
     def discover_node(self, node, uid):
         """Discover resources available on a node."""
-        coap_node_url = 'coap://[{}]'.format(node.address)
+        coap_node_port = COAP_PORT
+        coap_protocol = "coap"
+        if self._is_secure:
+            coap_node_port = COAPS_PORT
+            coap_protocol = "coaps"
+
+        coap_node_url = '{}://[{}:{}]'.format(
+            coap_protocol, node.address, coap_node_port)
+
         if len(node.endpoints) == 0:
             logger.debug("Discovering CoAP node {}".format(node.address))
             _, payload = yield _coap_resource('{0}/.well-known/core'
