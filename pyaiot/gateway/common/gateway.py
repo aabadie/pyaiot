@@ -179,7 +179,7 @@ class GatewayBase(web.Application, GatewayBaseMixin, metaclass=ABCMeta):
         settings = {'debug': True}
 
         # Create connection to broker
-        self.create_broker_connection(
+        await self.create_broker_connection(
             "ws://{}:{}/gw".format(options.broker_host, options.broker_port))
 
         super().__init__(handlers, **settings)
