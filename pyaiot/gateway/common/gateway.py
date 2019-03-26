@@ -31,6 +31,7 @@
 
 import json
 import logging
+import asyncio 
 from abc import ABCMeta, abstractmethod
 from tornado import web, gen
 from tornado.websocket import websocket_connect
@@ -50,15 +51,14 @@ class GatewayBaseMixin():
         """Check if the node uid is already present."""
         return uid in self.nodes
 
-    @gen.coroutine
-    def add_node(self, node):
+    async def add_node(self, node):
         """Add a new node to the list of nodes and notify the broker."""
         node.set_resource_value('protocol', self.PROTOCOL)
         self.nodes.update({node.uid: node})
         self.send_to_broker(Message.new_node(node.uid))
         for res, value in node.resources.items():
             self.send_to_broker(Message.update_node(node.uid, res, value))
-        yield self.discover_node(node)
+        await self.discover_node(node)
 
     def reset_node(self, node, default_resources={}):
         """Reset a node: clear the current resource and reinitialize them."""
@@ -79,16 +79,15 @@ class GatewayBaseMixin():
         """Return the node matching the given uid."""
         return self.nodes[uid]
 
-    @gen.coroutine
-    def forward_data_from_node(self, node, resource, value):
+    async def forward_data_from_node(self, node, resource, value):
         """Send data received from a node to the broker via the gateway."""
         logger.debug("Sending data received from node '{}': '{}', '{}'."
                      .format(node, resource, value))
         node.set_resource_value(resource, value)
-        self.send_to_broker(Message.update_node(node.uid, resource, value))
+        await self.send_to_broker(
+            Message.update_node(node.uid, resource, value))
 
-    @gen.coroutine
-    def fetch_nodes_cache(self, client):
+    async def fetch_nodes_cache(self, client):
         """Send cached nodes information to a given client.
 
         :param client: the ID of the client
@@ -98,7 +97,7 @@ class GatewayBaseMixin():
         for node in self.nodes.values():
             self.send_to_broker(Message.new_node(node.uid, dst=client))
             for resource, value in node.resources.items():
-                self.send_to_broker(
+                await self.send_to_broker(
                     Message.update_node(node.uid, resource, value, dst=client))
 
     def close_client(self):
@@ -107,34 +106,32 @@ class GatewayBaseMixin():
         if self.broker is not None:
             self.broker.close()
 
-    @gen.coroutine
-    def create_broker_connection(self, url):
+    async def create_broker_connection(self, url):
         """Create an asynchronous connection to the broker."""
         while True:
             try:
-                self.broker = yield websocket_connect(url)
+                self.broker = await websocket_connect(url)
             except ConnectionRefusedError:
                 logger.warning("Cannot connect, retrying in 3s")
             else:
                 logger.info("Connected to broker, sending auth token")
                 self.broker.write_message(auth_token(self.keys))
-                yield gen.sleep(1)
+                await asyncio.sleep(1)
                 self.fetch_nodes_cache('all')
                 while True:
-                    message = yield self.broker.read_message()
+                    message = await self.broker.read_message()
                     if message is None:
                         logger.warning("Connection with broker lost.")
                         break
                     self.on_broker_message(message)
 
-            yield gen.sleep(3)
+            await asyncio.sleep(3)
 
-    @gen.coroutine
-    def send_to_broker(self, message):
+    async def send_to_broker(self, message):
         """Send a string message to the parent broker."""
         if self.broker is not None:
             logger.debug("Sending message '{}' to broker.".format(message))
-            self.broker.write_message(message)
+            await self.broker.write_message(message)
 
     def on_broker_message(self, message):
         """Handle a message received from the broker websocket."""
